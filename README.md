@@ -102,6 +102,49 @@ enabled. A container validates EL7 userspace compatibility, but uses the host's
 kernel, so deployments on a real CentOS 7 kernel should still be tested. The
 existing upstream test workflow remains separate from this packaging smoke test.
 
+## EL9 RPM builds
+
+The [EL9 RPM workflow](.github/workflows/el9-rpm.yml) runs on every push (branches
+and tags), or manually via **Actions > EL9 RPM > Run workflow** once the workflow
+exists on the default branch. It builds inside `rockylinux:9` using the official
+Rocky Linux repositories, with no additional secrets. Packages target EL9
+x86_64 userspace (Rocky Linux 9, AlmaLinux 9 and RHEL 9); validate installation
+and behavior on your target distribution before deployment. EL7 and EL9 RPMs
+are separate builds and should not be installed interchangeably.
+
+Download the `fping-el9-x86_64-...` artifact from the successful run. It includes
+binary and source RPMs, `SHA256SUMS`, package metadata and runtime dependencies,
+with the same retention and smoke tests as the CentOS 7 workflow. EL9 packages
+use the `.el9` release suffix, for example
+`fping-5.5-0.ci123.1.git0123456789ab.el9.x86_64.rpm`.
+
+```sh
+sha256sum -c SHA256SUMS
+sudo dnf install ./fping-*.el9.x86_64.rpm
+/usr/sbin/fping --version
+/usr/sbin/fping -4 -c 3 127.0.0.1
+/usr/sbin/fping6 -c 3 ::1
+```
+
+To reproduce locally on an x86_64 Linux Docker host:
+
+```sh
+mkdir -p artifacts
+docker run --rm --platform linux/amd64 \
+  --cap-add NET_RAW --cap-add NET_ADMIN \
+  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+  --sysctl net.ipv6.conf.default.disable_ipv6=0 \
+  --mount "type=bind,source=$(pwd),target=/source,readonly" \
+  --mount "type=bind,source=$(pwd)/artifacts,target=/output" \
+  rockylinux:9 bash /source/ci/build-el9-rpm.sh /output
+```
+
+Use a separate or empty output directory for each distribution. Builds require
+Docker Hub and Rocky Linux repositories to be available. The `rockylinux:9` tag
+tracks the current Rocky Linux 9 minor release; the build is not pinned to a
+specific container digest. These RPMs are unsigned, and container smoke tests
+do not replace testing on the target system's kernel and security policy.
+
 ## Usage
 
 Have a look at the [fping(8)](doc/fping.pod) manual page for usage help.

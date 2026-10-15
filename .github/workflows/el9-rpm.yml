@@ -1,0 +1,56 @@
+name: EL9 RPM
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-rpm:
+    name: Build and test EL9 x86_64 RPM
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build and test RPM in Rocky Linux 9
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          release="0.ci${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}.git${GITHUB_SHA:0:12}"
+          docker run --rm --platform linux/amd64 \
+            --cap-add NET_RAW --cap-add NET_ADMIN \
+            --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+            --sysctl net.ipv6.conf.default.disable_ipv6=0 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/source,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/artifacts,target=/output" \
+            --env "RPM_RELEASE=$release" \
+            rockylinux:9 \
+            bash /source/ci/build-el9-rpm.sh /output \
+            2>&1 | tee artifacts/build.log
+
+      - name: Upload RPMs and checksums
+        uses: actions/upload-artifact@v6
+        with:
+          name: fping-el9-x86_64-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            artifacts/*.rpm
+            artifacts/SHA256SUMS
+            artifacts/rpm-*.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fping-el9-build-log-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/build.log
+          if-no-files-found: warn
+          retention-days: 7
