@@ -1,11 +1,16 @@
-Summary: send ICMP echo probes to multiple hosts
+%{!?fping_version:%global fping_version 5.5}
+%{!?fping_release:%global fping_release 1}
+
+Summary: Send ICMP echo probes to multiple hosts
 Name: fping
-Version: 4.2
-Release: 1
-License: Freely redistributable without restriction
-Group: Applications/System
-Source0: http://fping.org/dist/%{name}-%{version}.tar.gz
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
+Version: %{fping_version}
+Release: %{fping_release}%{?dist}
+License: BSD with advertising
+URL: https://fping.org/
+Source0: https://fping.org/dist/%{name}-%{version}.tar.gz
+BuildRequires: gcc, make, perl
+BuildRequires: libcap
+Requires: libcap
 
 %description
 fping is a program to send ICMP echo probes to network hosts, similar to ping,
@@ -18,45 +23,25 @@ statistics.
 %setup -q
 
 %build
-
-if [ ! -f ./configure ] ; then
-    ./autogen.sh
-fi
-
-# fping
-%configure --enable-ipv4
-make
-
-# fping6
-%configure --enable-ipv6
-make
-%{__mv} -f src/fping src/fping6
+# GCC 4.8 defaults to gnu90, but the current sources use C99 declarations.
+%configure --enable-ipv4 --enable-ipv6 CFLAGS="%{optflags} -std=gnu99"
+make %{?_smp_mflags}
 
 %install
-rm -rf $RPM_BUILD_ROOT
-make DESTDIR=$RPM_BUILD_ROOT install
+make DESTDIR=%{buildroot} install
+ln -s fping %{buildroot}%{_sbindir}/fping6
+ln -s fping.8 %{buildroot}%{_mandir}/man8/fping6.8
 
-# fping6
-%{__install} -Dp -m4755 src/fping6 %{buildroot}%{_sbindir}/fping6
-%{__ln_s} -f fping.8 %{buildroot}%{_mandir}/man8/fping6.8
-
-%clean
-rm -rf $RPM_BUILD_ROOT
+%check
+./src/fping --version
 
 %files
-%defattr(-,root,root,-)
-%attr(4755, root, root) /usr/sbin/fping
-%attr(4755, root, root) /usr/sbin/fping6
-%doc README.md COPYING CHANGELOG.md
-/usr/share/man/man8/fping.8.gz
-/usr/share/man/man8/fping6.8.gz
-
-%post
-if [ -x /usr/sbin/setcap ]; then
-    /bin/chmod 0755 /usr/sbin/fping*
-    /usr/sbin/setcap cap_net_raw,cap_net_admin+ep /usr/sbin/fping
-    /usr/sbin/setcap cap_net_raw,cap_net_admin+ep /usr/sbin/fping6
-fi
+%license COPYING
+%doc README.md CHANGELOG.md
+%attr(0755,root,root) %caps(cap_net_raw,cap_net_admin=ep) %{_sbindir}/fping
+%{_sbindir}/fping6
+%{_mandir}/man8/fping.8*
+%{_mandir}/man8/fping6.8*
 
 %changelog
 * Mon Dec 24 2012 Marcus Vinicius Ferreira <ferreira.mv@gmail.com>
@@ -71,4 +56,3 @@ fi
 - Initial build
 
 # vim:ft=spec:
-
