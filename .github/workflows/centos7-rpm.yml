@@ -1,0 +1,57 @@
+name: CentOS 7 RPM
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-rpm:
+    name: Build and test CentOS 7 x86_64 RPM
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      # Keep JavaScript actions on the modern host, not inside CentOS 7.
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build and test RPM in CentOS 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          release="0.ci${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}.git${GITHUB_SHA:0:12}"
+          docker run --rm --platform linux/amd64 \
+            --cap-add NET_RAW --cap-add NET_ADMIN \
+            --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+            --sysctl net.ipv6.conf.default.disable_ipv6=0 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/source,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/artifacts,target=/output" \
+            --env "RPM_RELEASE=$release" \
+            centos:7.9.2009 \
+            bash /source/ci/build-centos7-rpm.sh /output \
+            2>&1 | tee artifacts/build.log
+
+      - name: Upload RPMs and checksums
+        uses: actions/upload-artifact@v6
+        with:
+          name: fping-centos7-x86_64-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            artifacts/*.rpm
+            artifacts/SHA256SUMS
+            artifacts/rpm-*.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fping-centos7-build-log-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/build.log
+          if-no-files-found: warn
+          retention-days: 7

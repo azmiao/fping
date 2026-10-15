@@ -42,6 +42,66 @@ provided that your GID is included in the range defined in
 fping in rootless / unprivileged containers. The --fwmark option needs root or
 cap_net_admin.
 
+## CentOS 7 RPM builds
+
+The [CentOS 7 RPM workflow](.github/workflows/centos7-rpm.yml) builds an x86_64
+RPM from the checked-out source on every push (branches and tags), or manually
+via **Actions > CentOS 7 RPM > Run workflow**. GitHub only offers the manual
+button after the workflow exists on the repository's default branch. Enable
+GitHub Actions in your fork if it is disabled. No additional secrets are needed.
+
+The workflow runs Actions on Ubuntu and compiles inside `centos:7.9.2009`, using
+GCC 4.8, glibc 2.17 and the signed CentOS Vault repositories. It does not build
+on Ubuntu and relabel the result as an EL7 package. The version comes from
+`configure.ac`; the release includes the workflow run number, attempt and commit
+ID, for example `fping-5.5-0.ci123.1.git0123456789ab.el7.x86_64.rpm`.
+CI releases sort before a future stable `5.5-1` RPM.
+
+After a successful run, download the `fping-centos7-x86_64-...` artifact from its
+Actions run page. It contains the binary RPM, source RPM, `SHA256SUMS`, package
+metadata and runtime dependency list. Artifacts are retained for 30 days; build
+logs are uploaded separately for 7 days, including when the build fails. This
+workflow does not publish a GitHub Release or push a container image.
+
+Extract the artifact, verify it, and install **only the binary RPM**:
+
+```sh
+sha256sum -c SHA256SUMS
+sudo yum localinstall ./fping-*.el7.x86_64.rpm
+/usr/sbin/fping --version
+/usr/sbin/fping -4 -c 1 127.0.0.1
+/usr/sbin/fping6 -c 1 ::1
+```
+
+`fping6` is a symlink to the dual-stack binary. RPM installs file capabilities
+`cap_net_raw,cap_net_admin=ep` instead of a setuid executable. The workflow checks
+RPM installation, file integrity, IPv4/IPv6 loopback and an unprivileged user's
+IPv4 loopback probe. The filesystem must support file capabilities; `nosuid`
+mounts and restricted containers may prevent their use. The RPMs are not signed
+with a project signing key; checksums verify download integrity, not publisher
+identity. Existing third-party fping packages may have different release
+ordering or file ownership; review them before replacing an installation.
+
+To reproduce the build locally on an x86_64 Linux Docker host:
+
+```sh
+mkdir -p artifacts
+docker run --rm --platform linux/amd64 \
+  --cap-add NET_RAW --cap-add NET_ADMIN \
+  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+  --sysctl net.ipv6.conf.default.disable_ipv6=0 \
+  --mount "type=bind,source=$(pwd),target=/source,readonly" \
+  --mount "type=bind,source=$(pwd)/artifacts,target=/output" \
+  centos:7.9.2009 bash /source/ci/build-centos7-rpm.sh /output
+```
+
+CentOS 7 reached end of life on June 30, 2024. This package does not restore OS
+security support. Builds depend on Docker Hub and the availability of
+`https://vault.centos.org/7.9.2009/`; repository GPG and HTTPS verification remain
+enabled. A container validates EL7 userspace compatibility, but uses the host's
+kernel, so deployments on a real CentOS 7 kernel should still be tested. The
+existing upstream test workflow remains separate from this packaging smoke test.
+
 ## Usage
 
 Have a look at the [fping(8)](doc/fping.pod) manual page for usage help.
